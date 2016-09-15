@@ -80,7 +80,7 @@ class MissingSection(zc.buildout.UserError, KeyError):
 
 def _annotate_section(section, note):
     for key in section:
-        section[key] = (section[key], note)
+        section[key] = (section[key], note, [])
     return section
 
 def _annotate(data, note):
@@ -88,36 +88,42 @@ def _annotate(data, note):
         data[key] = _annotate_section(data[key], note)
     return data
 
-def _print_annotate(data):
+def _print_annotate(data, with_history, chosen_section):
     sections = list(data.keys())
     sections.sort()
     print_()
     print_("Annotated sections")
     print_("="*len("Annotated sections"))
     for section in sections:
-        print_()
-        print_('[%s]' % section)
-        keys = list(data[section].keys())
-        keys.sort()
-        for key in keys:
-            value, notes = data[section][key]
-            keyvalue = "%s= %s" % (key, value)
-            print_(keyvalue)
-            line = '   '
-            for note in notes.split():
-                if note == '[+]':
-                    line = '+= '
-                elif note == '[-]':
-                    line = '-= '
-                else:
-                    print_(line, note)
-                    line = '   '
+        if (not chosen_section) or (section == chosen_section):
+            print_()
+            print_('[%s]' % section)
+            keys = list(data[section].keys())
+            keys.sort()
+            for key in keys:
+                value, notes, history = data[section][key]
+                keyvalue = "%s= %s" % (key, value)
+                print_(keyvalue)
+                line = '   '
+                for note in notes.split():
+                    if note == '[+]':
+                        line = '+= '
+                    elif note == '[-]':
+                        line = '-= '
+                    else:
+                        print_(line, note)
+                        line = '   '
+                if with_history:
+                    for value, note in reversed(history):
+                        note = note.replace('[+]', '+=')
+                        note = note.replace('[-]', '-=')
+                        print_("H", value, note)
     print_()
 
 
 def _unannotate_section(section):
     for key in section:
-        value, note = section[key]
+        value, note, history = section[key]
         section[key] = value
     return section
 
@@ -189,7 +195,7 @@ class Buildout(DictMixin):
                     # Sigh. This model of a buildout instance
                     # with methods is breaking down. :(
                     config_file = None
-                    data['buildout']['directory'] = ('.', 'COMPUTED_VALUE')
+                    data['buildout']['directory'] = ('.', 'COMPUTED_VALUE', [])
                 else:
                     raise zc.buildout.UserError(
                         "Couldn't open %s" % config_file)
@@ -199,13 +205,13 @@ class Buildout(DictMixin):
 
             if config_file:
                 data['buildout']['directory'] = (os.path.dirname(config_file),
-                    'COMPUTED_VALUE')
+                    'COMPUTED_VALUE', [])
         else:
             base = None
 
 
         cloptions = dict(
-            (section, dict((option, (value, 'COMMAND_LINE_VALUE'))
+            (section, dict((option, (value, 'COMMAND_LINE_VALUE', []))
                            for (_, option, value) in v))
             for (section, v) in itertools.groupby(sorted(cloptions),
                                                   lambda v: v[0])
@@ -235,7 +241,7 @@ class Buildout(DictMixin):
 
         # Set up versions section, if necessary
         if 'versions' not in data['buildout']:
-            data['buildout']['versions'] = ('versions', 'DEFAULT_VALUE')
+            data['buildout']['versions'] = ('versions', 'DEFAULT_VALUE', [])
             if 'versions' not in data:
                 data['versions'] = {}
 
@@ -246,7 +252,7 @@ class Buildout(DictMixin):
         else:
             versions = {}
         versions.update(
-            dict((k, (v, 'DEFAULT_VALUE'))
+            dict((k, (v, 'DEFAULT_VALUE', []))
                  for (k, v) in (
                      # Prevent downgrading due to prefer-final:
                      ('zc.buildout',
@@ -265,7 +271,7 @@ class Buildout(DictMixin):
         # file location
         for name in ('download-cache', 'eggs-directory', 'extends-cache'):
             if name in data['buildout']:
-                origdir, src = data['buildout'][name]
+                origdir, src, history = data['buildout'][name]
                 if '${' in origdir:
                     continue
                 if not os.path.isabs(origdir):
@@ -288,7 +294,7 @@ class Buildout(DictMixin):
                     if not os.path.isabs(absdir):
                         absdir = os.path.join(basedir, absdir)
                     absdir = os.path.abspath(absdir)
-                    data['buildout'][name] = (absdir, src)
+                    data['buildout'][name] = (absdir, src, history)
 
         self._annotated = copy.deepcopy(data)
         self._raw = _unannotate(data)
@@ -1104,7 +1110,16 @@ class Buildout(DictMixin):
     runsetup = setup # backward compat.
 
     def annotate(self, args=None):
-        _print_annotate(self._annotated)
+        if args and "--history" in args:
+            with_history = True
+        else:
+            with_history = False
+        section = None
+        if args:
+            for arg in args:
+                if arg.startswith('--section'):
+                    _, section = arg.split("=")
+        _print_annotate(self._annotated, with_history, section)
 
     def print_options(self):
         for section in sorted(self._data):
@@ -1696,27 +1711,42 @@ def _update_section(s1, s2):
     s2 = s2.copy() # avoid mutating the second argument, which is unexpected
     # Sort on key, then on the addition or substraction operator (+ comes first)
     for k, v in sorted(s2.items(), key=lambda x: (x[0].rstrip(' +'), x[0][-1])):
-        v2, note2 = v
+        v2, note2, history2 = v
         if k.endswith('+'):
             key = k.rstrip(' +')
             # Find v1 in s2 first; it may have been defined locally too.
-            v1, note1 = s2.get(key, s1.get(key, ("", "")))
+            v1, note1, history1 = s2.get(key, s1.get(key, ("", "", [])))
             newnote = ' [+] '.join((note1, note2)).strip()
-            s2[key] = "\n".join((v1).split('\n') +
-                v2.split('\n')), newnote
+            newhistory = list(history2)
+            newhistory.append((v1,note1))
+            s2[key] = ("\n".join((v1).split('\n') +
+                v2.split('\n')), newnote, newhistory)
             del s2[k]
         elif k.endswith('-'):
             key = k.rstrip(' -')
             # Find v1 in s2 first; it may have been set by a += operation first
-            v1, note1 = s2.get(key, s1.get(key, ("", "")))
+            v1, note1, history1 = s2.get(key, s1.get(key, ("", "", [])))
             newnote = ' [-] '.join((note1, note2)).strip()
+            newhistory = list(history2)
+            newhistory.append((v1,note1))
             s2[key] = ("\n".join(
                 [v for v in v1.split('\n')
-                   if v not in v2.split('\n')]), newnote)
+                   if v not in v2.split('\n')]), newnote, newhistory)
             del s2[k]
 
-    s1.update(s2)
+    _update_and_history(s1, s2)
     return s1
+
+def _update_and_history(s1, s2):
+    for key in s2:
+        if key in s1:
+            v1, n1, h1 = s1[key]
+            v2, n2, h2 = s2[key]
+            h2.append((v1, n1))
+            value = (v2, n2, h2)
+            s1[key] = value
+        else:
+            s1[key] = s2[key]
 
 def _update(d1, d2):
     for section in d2:
