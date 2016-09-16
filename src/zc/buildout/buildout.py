@@ -259,7 +259,8 @@ class Buildout(DictMixin):
         __doing__ = 'Initializing.'
 
         # default options
-        data = dict(buildout=_buildout_default_options.copy())
+        _buildout_default_options_copy = copy.deepcopy(_buildout_default_options)
+        data = dict(buildout=_buildout_default_options_copy)
         self._buildout_dir = os.getcwd()
 
         if config_file and not _isurl(config_file):
@@ -293,7 +294,7 @@ class Buildout(DictMixin):
             for (section, v) in itertools.groupby(sorted(cloptions),
                                                   lambda v: v[0])
             )
-        override = cloptions.get('buildout', {}).copy()
+        override = copy.deepcopy(cloptions.get('buildout', {}))
 
         # load user defaults, which override defaults
         if user_defaults:
@@ -304,14 +305,16 @@ class Buildout(DictMixin):
                     os.path.expanduser('~'), '.buildout')
             user_config = os.path.join(buildout_home, 'default.cfg')
             if os.path.exists(user_config):
+                data_buildout_copy = copy.deepcopy(data['buildout'])
                 _update(data, _open(os.path.dirname(user_config), user_config,
-                                    [], data['buildout'].copy(), override,
+                                    [], data_buildout_copy, override,
                                     set()))
 
         # load configuration files
         if config_file:
+            data_buildout_copy = copy.deepcopy(data['buildout'])
             _update(data, _open(os.path.dirname(config_file), config_file, [],
-                                data['buildout'].copy(), override, set()))
+                                data_buildout_copy, override, set()))
 
         # apply command-line options
         _update(data, cloptions)
@@ -1364,7 +1367,7 @@ class Options(DictMixin):
                 result.update(self._do_extend_raw(iname, raw, doing))
 
             result = _annotate_section(result, "")
-            data = _annotate_section(data.copy(), "")
+            data = _annotate_section(copy.deepcopy(data), "")
             _update_section(result, data)
             result = _unannotate_section(result)
             result.pop('<', None)
@@ -1490,7 +1493,7 @@ class Options(DictMixin):
         return len(self.keys())
 
     def copy(self):
-        result = self._raw.copy()
+        result = copy.deepcopy(self._raw)
         result.update(self._cooked)
         result.update(self._data)
         return result
@@ -1658,7 +1661,8 @@ def _open(base, filename, seen, dl_options, override, downloaded):
     Recursively open other files based on buildout options found.
     """
     _update_section(dl_options, override)
-    _dl_options = _unannotate_section(dl_options.copy())
+    dl_options_copy = copy.deepcopy(dl_options)
+    _dl_options = _unannotate_section(dl_options_copy)
     newest = bool_option(_dl_options, 'newest', 'false')
     fallback = newest and not (filename in downloaded)
     download = zc.buildout.download.Download(
@@ -1787,7 +1791,7 @@ def _update_section(s1, s2):
     # in section 2 overriding those in section 1. If there are += or -=
     # operators in section 2, process these to add or substract items (delimited
     # by newlines) from the preexisting values.
-    s2 = s2.copy() # avoid mutating the second argument, which is unexpected
+    s2 = copy.deepcopy(s2) # avoid mutating the second argument, which is unexpected
     # Sort on key, then on the addition or substraction operator (+ comes first)
     for k, v in sorted(s2.items(), key=lambda x: (x[0].rstrip(' +'), x[0][-1])):
         if k.endswith('+'):
