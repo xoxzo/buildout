@@ -78,10 +78,97 @@ class MissingSection(zc.buildout.UserError, KeyError):
         return "The referenced section, %r, was not defined." % self.args[0]
 
 
-def _annotate_section(section, note):
+def _annotate_section(section, source):
     for key in section:
-        section[key] = (section[key], note, [])
+        section[key] = SectionKey(section[key], source)
     return section
+
+class SectionKey(object):
+    def __init__(self, value, source):
+        self.history = []
+        self.value = value
+        self.addToHistory("SET", value, source)
+
+    @property
+    def source(self):
+        return self.history[-1].source
+
+    def overrideValue(self, sectionkey):
+        self.value = sectionkey.value
+        if sectionkey.history[-1].operation not in ['ADD', 'REMOVE']:
+            self.addToHistory("OVERRIDE", sectionkey.value, sectionkey.source)
+
+    def setDirectory(self, value): 
+        self.value = value
+        self.addToHistory("DIRECTORY", value, self.source)
+
+    def addToValue(self, added, source):
+        subvalues = self.value.split('\n') + added.split('\n')
+        self.value = "\n".join(subvalues)
+        self.addToHistory("ADD", added, source)
+
+    def removeFromValue(self, removed, source):
+        subvalues = [
+            v 
+            for v in self.value.split('\n')
+            if v not in removed.split('\n')
+        ]
+        self.value = "\n".join(subvalues)
+        self.addToHistory("REMOVE", removed, source)
+
+    def addToHistory(self, operation, value, source):
+        item = HistoryItem(operation, value, source)
+        self.history.append(item)
+
+    def printHistory(self):
+        for item in reversed(self.history):
+            item.printAll()
+
+    def printState(self):
+        toprint = []
+        history = copy.deepcopy(self.history)
+	while history:
+	    next = history.pop()
+	    if next.operation in ["ADD", "REMOVE"]:
+		next.printShort(toprint)
+	    else:
+		next.printShort(toprint)
+		break
+
+        for note in reversed(toprint):
+            print_(note)
+    
+    def __repr__(self):
+        return "<SectionKey value=%s source=%s>" % (" ".join(self.value.split('\n')), self.source)
+
+
+class HistoryItem(object):
+    def __init__(self, operation, value, source):
+        self.operation = operation
+        self.value = value
+        self.source = source
+
+    def printShort(self, toprint):
+        if self.operation in ["OVERRIDE", "SET", "DIRECTORY"]:
+            toprint.append("    " + self.source)
+        elif self.operation == "ADD":
+            toprint.append("+= " + self.source)
+        elif self.operation == "REMOVE":
+            toprint.append("-= " + self.source)
+
+    def printSource(self):
+        print_("  ", self.source)
+
+    def printOperation(self):
+        print_("  ", self.operation, self.value)
+
+    def printAll(self):
+        self.printOperation()
+        self.printSource()
+
+    def __repr__(self):
+        return "<HistoryItem operation=%s value=%s source=%s>" % (self.operation, " ".join(self.value.split('\n')), self.source)
+
 
 def _annotate(data, note):
     for key in data:
@@ -101,30 +188,20 @@ def _print_annotate(data, with_history, chosen_section):
             keys = list(data[section].keys())
             keys.sort()
             for key in keys:
-                value, notes, history = data[section][key]
+                sectionkey = data[section][key]
+                value = sectionkey.value
                 keyvalue = "%s= %s" % (key, value)
                 print_(keyvalue)
-                line = '   '
-                for note in notes.split():
-                    if note == '[+]':
-                        line = '+= '
-                    elif note == '[-]':
-                        line = '-= '
-                    else:
-                        print_(line, note)
-                        line = '   '
                 if with_history:
-                    for value, note in reversed(history):
-                        note = note.replace('[+]', '+=')
-                        note = note.replace('[-]', '-=')
-                        print_("H", value, note)
+                    sectionkey.printHistory()
+                else:
+                    sectionkey.printState()
     print_()
 
 
 def _unannotate_section(section):
     for key in section:
-        value, note, history = section[key]
-        section[key] = value
+        section[key] = section[key].value
     return section
 
 def _unannotate(data):
@@ -195,7 +272,7 @@ class Buildout(DictMixin):
                     # Sigh. This model of a buildout instance
                     # with methods is breaking down. :(
                     config_file = None
-                    data['buildout']['directory'] = ('.', 'COMPUTED_VALUE', [])
+                    data['buildout']['directory'] = SectionKey('.', 'COMPUTED_VALUE')
                 else:
                     raise zc.buildout.UserError(
                         "Couldn't open %s" % config_file)
@@ -204,14 +281,14 @@ class Buildout(DictMixin):
                     "%r already exists." % config_file)
 
             if config_file:
-                data['buildout']['directory'] = (os.path.dirname(config_file),
-                    'COMPUTED_VALUE', [])
+                data['buildout']['directory'] = SectionKey(os.path.dirname(config_file),
+                    'COMPUTED_VALUE')
         else:
             base = None
 
 
         cloptions = dict(
-            (section, dict((option, (value, 'COMMAND_LINE_VALUE', []))
+            (section, dict((option, SectionKey(value, 'COMMAND_LINE_VALUE'))
                            for (_, option, value) in v))
             for (section, v) in itertools.groupby(sorted(cloptions),
                                                   lambda v: v[0])
@@ -241,18 +318,18 @@ class Buildout(DictMixin):
 
         # Set up versions section, if necessary
         if 'versions' not in data['buildout']:
-            data['buildout']['versions'] = ('versions', 'DEFAULT_VALUE', [])
+            data['buildout']['versions'] = SectionKey('versions', 'DEFAULT_VALUE')
             if 'versions' not in data:
                 data['versions'] = {}
 
         # Default versions:
-        versions_section_name = data['buildout']['versions'][0]
+        versions_section_name = data['buildout']['versions'].value
         if versions_section_name:
             versions = data[versions_section_name]
         else:
             versions = {}
         versions.update(
-            dict((k, (v, 'DEFAULT_VALUE', []))
+            dict((k, SectionKey(v, 'DEFAULT_VALUE'))
                  for (k, v) in (
                      # Prevent downgrading due to prefer-final:
                      ('zc.buildout',
@@ -271,7 +348,9 @@ class Buildout(DictMixin):
         # file location
         for name in ('download-cache', 'eggs-directory', 'extends-cache'):
             if name in data['buildout']:
-                origdir, src, history = data['buildout'][name]
+                sectionkey = data['buildout'][name]
+                origdir = sectionkey.value
+                src = sectionkey.source
                 if '${' in origdir:
                     continue
                 if not os.path.isabs(origdir):
@@ -279,7 +358,7 @@ class Buildout(DictMixin):
                                'COMPUTED_VALUE',
                                'COMMAND_LINE_VALUE'):
                         if 'directory' in data['buildout']:
-                            basedir = data['buildout']['directory'][0]
+                            basedir = data['buildout']['directory'].value
                         else:
                             basedir = self._buildout_dir
                     else:
@@ -294,7 +373,7 @@ class Buildout(DictMixin):
                     if not os.path.isabs(absdir):
                         absdir = os.path.join(basedir, absdir)
                     absdir = os.path.abspath(absdir)
-                    data['buildout'][name] = (absdir, src, history)
+                    sectionkey.setDirectory(absdir)
 
         self._annotated = copy.deepcopy(data)
         self._raw = _unannotate(data)
@@ -1711,42 +1790,33 @@ def _update_section(s1, s2):
     s2 = s2.copy() # avoid mutating the second argument, which is unexpected
     # Sort on key, then on the addition or substraction operator (+ comes first)
     for k, v in sorted(s2.items(), key=lambda x: (x[0].rstrip(' +'), x[0][-1])):
-        v2, note2, history2 = v
         if k.endswith('+'):
             key = k.rstrip(' +')
+            implicit_value = SectionKey("", "IMPLICIT_VALUE")
             # Find v1 in s2 first; it may have been defined locally too.
-            v1, note1, history1 = s2.get(key, s1.get(key, ("", "", [])))
-            newnote = ' [+] '.join((note1, note2)).strip()
-            newhistory = list(history2)
-            newhistory.append((v1,note1))
-            s2[key] = ("\n".join((v1).split('\n') +
-                v2.split('\n')), newnote, newhistory)
+            section_key = s2.get(key, s1.get(key, implicit_value))
+            section_key.addToValue(v.value, v.source) 
+            s2[key] = section_key
             del s2[k]
         elif k.endswith('-'):
             key = k.rstrip(' -')
+            implicit_value = SectionKey("", "IMPLICIT_VALUE")
             # Find v1 in s2 first; it may have been set by a += operation first
-            v1, note1, history1 = s2.get(key, s1.get(key, ("", "", [])))
-            newnote = ' [-] '.join((note1, note2)).strip()
-            newhistory = list(history2)
-            newhistory.append((v1,note1))
-            s2[key] = ("\n".join(
-                [v for v in v1.split('\n')
-                   if v not in v2.split('\n')]), newnote, newhistory)
+            section_key = s2.get(key, s1.get(key, implicit_value))
+            section_key.removeFromValue(v.value, v.source) 
+            s2[key] = section_key
             del s2[k]
 
     _update_and_history(s1, s2)
     return s1
 
 def _update_and_history(s1, s2):
-    for key in s2:
+    for key, v2 in s2.items():
         if key in s1:
-            v1, n1, h1 = s1[key]
-            v2, n2, h2 = s2[key]
-            h2.append((v1, n1))
-            value = (v2, n2, h2)
-            s1[key] = value
+            v1 = s1[key]
+            v1.overrideValue(v2)
         else:
-            s1[key] = s2[key]
+            s1[key] = v2
 
 def _update(d1, d2):
     for section in d2:
