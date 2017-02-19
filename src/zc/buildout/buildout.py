@@ -120,19 +120,32 @@ class SectionKey(object):
         item = HistoryItem(operation, value, source)
         self.history.append(item)
 
-    def printHistory(self):
+    def printHistory(self, basedir):
         for item in reversed(self.history):
-            item.printAll()
+            item.printAll(basedir)
 
-    def printState(self):
+    def printValue(self):
+        lines = self.value.splitlines()
+        for line in lines:
+            print_("  ", line)
+
+    def printKeyValue(self, key):
+        lines = self.value.splitlines()
+        if len(lines) <= 1:
+            print_(key, "= ", self.value, sep='')
+        else:
+            print_(key, "=", sep='')
+            self.printValue()
+
+    def printState(self, basedir):
         toprint = []
         history = copy.deepcopy(self.history)
 	while history:
 	    next = history.pop()
 	    if next.operation in ["ADD", "REMOVE"]:
-		next.printShort(toprint)
+		next.printShort(toprint, basedir)
 	    else:
-		next.printShort(toprint)
+		next.printShort(toprint, basedir)
 		break
 
         for note in reversed(toprint):
@@ -148,23 +161,42 @@ class HistoryItem(object):
         self.value = value
         self.source = source
 
-    def printShort(self, toprint):
+    def printShort(self, toprint, basedir):
+        source = self.source_for_human(basedir)
         if self.operation in ["OVERRIDE", "SET", "DIRECTORY"]:
-            toprint.append("    " + self.source)
+            toprint.append("FROM " + source)
         elif self.operation == "ADD":
-            toprint.append("+= " + self.source)
+            toprint.append("  += " + source)
         elif self.operation == "REMOVE":
-            toprint.append("-= " + self.source)
-
-    def printSource(self):
-        print_("  ", self.source)
+            toprint.append("  -= " + source)
 
     def printOperation(self):
-        print_("  ", self.operation, self.value)
+        lines = self.value.splitlines()
+        if len(lines) <= 1:
+            print_("  ", self.operation, "VALUE =", self.value)
+        else:
+            print_("  ", self.operation, "VALUE =")
+            for line in lines:
+                print_("  ", "  ", line)
 
-    def printAll(self):
+    def printSource(self, basedir):
+        if self.source in (
+            'DEFAULT_VALUE', 'COMPUTED_VALUE', 'COMMAND_LINE_VALUE'):
+            prefix = "AS"
+        else:
+            prefix = "IN"
+        print_("  ", "FROM", self.source_for_human(basedir))
+
+    def source_for_human(self, basedir):
+        if self.source.startswith(basedir):
+            return os.path.relpath(self.source, basedir)
+        else:
+            return self.source
+         
+
+    def printAll(self, basedir):
+        self.printSource(basedir)
         self.printOperation()
-        self.printSource()
 
     def __repr__(self):
         return "<HistoryItem operation=%s value=%s source=%s>" % (self.operation, " ".join(self.value.split('\n')), self.source)
@@ -175,7 +207,7 @@ def _annotate(data, note):
         data[key] = _annotate_section(data[key], note)
     return data
 
-def _print_annotate(data, with_history, chosen_section):
+def _print_annotate(data, verbose, chosen_section, basedir):
     sections = list(data.keys())
     sections.sort()
     print_()
@@ -189,15 +221,13 @@ def _print_annotate(data, with_history, chosen_section):
             keys.sort()
             for key in keys:
                 sectionkey = data[section][key]
-                value = sectionkey.value
-                keyvalue = "%s= %s" % (key, value)
-                print_(keyvalue)
-                if with_history:
-                    sectionkey.printHistory()
+                sectionkey.printKeyValue(key)
+                if verbose:
+                    print_()
+                    sectionkey.printHistory(basedir)
                 else:
-                    sectionkey.printState()
-    print_()
-
+                    sectionkey.printState(basedir)
+                print_()
 
 def _unannotate_section(section):
     for key in section:
@@ -1192,16 +1222,16 @@ class Buildout(DictMixin):
     runsetup = setup # backward compat.
 
     def annotate(self, args=None):
-        if args and "--history" in args:
-            with_history = True
+        if args and "--verbose" in args:
+            verbose = True
         else:
-            with_history = False
+            verbose = False
         section = None
         if args:
             for arg in args:
                 if arg.startswith('--section'):
                     _, section = arg.split("=")
-        _print_annotate(self._annotated, with_history, section)
+        _print_annotate(self._annotated, verbose, section, self._buildout_dir)
 
     def print_options(self):
         for section in sorted(self._data):
@@ -1811,10 +1841,10 @@ def _update_section(s1, s2):
             s2[key] = section_key
             del s2[k]
 
-    _update_and_history(s1, s2)
+    _update_verbose(s1, s2)
     return s1
 
-def _update_and_history(s1, s2):
+def _update_verbose(s1, s2):
     for key, v2 in s2.items():
         if key in s1:
             v1 = s1[key]

@@ -799,70 +799,97 @@ the origin of the value (file name or ``COMPUTED_VALUE``, ``DEFAULT_VALUE``,
     <BLANKLINE>
     [buildout]
     allow-hosts= *
-        DEFAULT_VALUE
+    FROM DEFAULT_VALUE
+    <BLANKLINE>
     allow-picked-versions= true
-        DEFAULT_VALUE
+    FROM DEFAULT_VALUE
+    <BLANKLINE>
     bin-directory= bin
-        DEFAULT_VALUE
+    FROM DEFAULT_VALUE
+    <BLANKLINE>
     develop= recipes
-        /sample-buildout/buildout.cfg
+    FROM buildout.cfg
+    <BLANKLINE>
     develop-eggs-directory= develop-eggs
-        DEFAULT_VALUE
+    FROM DEFAULT_VALUE
+    <BLANKLINE>
     directory= /sample-buildout
-        COMPUTED_VALUE
+    FROM COMPUTED_VALUE
+    <BLANKLINE>
     eggs-directory= /sample-buildout/eggs
-        DEFAULT_VALUE
+    FROM DEFAULT_VALUE
+    <BLANKLINE>
     executable= ...
-        DEFAULT_VALUE
+    FROM DEFAULT_VALUE
+    <BLANKLINE>
     find-links=
-        DEFAULT_VALUE
+    FROM DEFAULT_VALUE
+    <BLANKLINE>
     install-from-cache= false
-        DEFAULT_VALUE
+    FROM DEFAULT_VALUE
+    <BLANKLINE>
     installed= .installed.cfg
-        DEFAULT_VALUE
+    FROM DEFAULT_VALUE
+    <BLANKLINE>
     log-format=
-        DEFAULT_VALUE
+    FROM DEFAULT_VALUE
+    <BLANKLINE>
     log-level= INFO
-        DEFAULT_VALUE
+    FROM DEFAULT_VALUE
+    <BLANKLINE>
     newest= true
-        DEFAULT_VALUE
+    FROM DEFAULT_VALUE
+    <BLANKLINE>
     offline= false
-        DEFAULT_VALUE
+    FROM DEFAULT_VALUE
+    <BLANKLINE>
     parts= data-dir
-        /sample-buildout/buildout.cfg
+    FROM buildout.cfg
+    <BLANKLINE>
     parts-directory= parts
-        DEFAULT_VALUE
+    FROM DEFAULT_VALUE
+    <BLANKLINE>
     prefer-final= true
-        DEFAULT_VALUE
+    FROM DEFAULT_VALUE
+    <BLANKLINE>
     python= buildout
-        DEFAULT_VALUE
+    FROM DEFAULT_VALUE
+    <BLANKLINE>
     show-picked-versions= false
-        DEFAULT_VALUE
+    FROM DEFAULT_VALUE
+    <BLANKLINE>
     socket-timeout=
-        DEFAULT_VALUE
+    FROM DEFAULT_VALUE
+    <BLANKLINE>
     update-versions-file=
-        DEFAULT_VALUE
+    FROM DEFAULT_VALUE
+    <BLANKLINE>
     use-dependency-links= true
-        DEFAULT_VALUE
+    FROM DEFAULT_VALUE
+    <BLANKLINE>
     versions= versions
-        DEFAULT_VALUE
+    FROM DEFAULT_VALUE
+    <BLANKLINE>
     <BLANKLINE>
     [data-dir]
     path= foo bins
-        /sample-buildout/buildout.cfg
+    FROM buildout.cfg
+    <BLANKLINE>
     recipe= recipes:mkdir
-        /sample-buildout/buildout.cfg
+    FROM buildout.cfg
+    <BLANKLINE>
     <BLANKLINE>
     [versions]
-    zc.buildout= >=1.99
-        DEFAULT_VALUE
-    zc.recipe.egg= >=1.99
-        DEFAULT_VALUE
+    zc. = >=1.99
+    FROM DEFAULT_VALUE
+    <BLANKLINE>
+    zc. = >=1.99
+    FROM DEFAULT_VALUE
     <BLANKLINE>
 
-Annotate and history::
+Annotate --verbose::
 
-    >>> print_(system(buildout+ ' annotate --history'), end='')
+    >>> print_(system(buildout+ ' annotate --verbose'), end='')
     ... # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     <BLANKLINE>
     Annotated sections
@@ -931,7 +958,7 @@ Annotate and history::
         DEFAULT_VALUE
     <BLANKLINE>
 
-Annotate and history and section::
+Annotate --section::
 
     >>> print_(system(buildout+ ' annotate --section=versions'), end='')
     ... # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
@@ -1626,60 +1653,107 @@ operations::
         DEFAULT_VALUE
     <BLANKLINE>
 
-With history::
+With --verbose::
 
-    >>> print_(system(os.path.join('bin', 'buildout') + ' annotate --history'), end='')
+    >>> print_(system(os.path.join('bin', 'buildout') + ' annotate --verbose'), end='')
     ... # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     <BLANKLINE>
     Annotated sections
     ==================
-    ...
-    <BLANKLINE>
+      ... 
     [part1]
-    option= a1 a2
-    a3 a4
-    a5
-        /sample-buildout/base.cfg
-    +=  /sample-buildout/extension1.cfg
-    +=  /sample-buildout/extension2.cfg
+    option=
+       a1 a2
+       a3 a4
+       a5
+    <BLANKLINE>
+       FROM extension2.cfg
+       ADD VALUE = a5
+       FROM extension1.cfg
+       ADD VALUE = a3 a4
+       FROM base.cfg
+       SET VALUE = a1 a2
+    <BLANKLINE>
     recipe=
-        /sample-buildout/base.cfg
+    <BLANKLINE>
+       FROM base.cfg
+       SET VALUE =
+    <BLANKLINE>
     <BLANKLINE>
     [part2]
     option= b1 b2 b3 b4
-        /sample-buildout/base.cfg
-    -=  /sample-buildout/extension1.cfg
-    -=  /sample-buildout/extension2.cfg
+    <BLANKLINE>
+       FROM extension2.cfg
+       REMOVE VALUE = b1 b2 b3
+       FROM extension1.cfg
+       REMOVE VALUE = b1 b2
+       FROM base.cfg
+       SET VALUE = b1 b2 b3 b4
+    <BLANKLINE>
     recipe=
-        /sample-buildout/base.cfg
+    <BLANKLINE>
+       FROM base.cfg
+       SET VALUE =
+    <BLANKLINE>
     <BLANKLINE>
     [part3]
-    option= c1 c2
-    c3 c4 c5
-        /sample-buildout/base.cfg
-    +=  /sample-buildout/extension1.cfg
+    option=
+       c1 c2
+       c3 c4 c5
+    <BLANKLINE>
+       FROM extension1.cfg
+       ADD VALUE = c3 c4 c5
+       FROM base.cfg
+       SET VALUE = c1 c2
+    <BLANKLINE>
     recipe=
-        /sample-buildout/base.cfg
+    <BLANKLINE>
+       FROM base.cfg
+       SET VALUE =
+    <BLANKLINE>
     <BLANKLINE>
     [part4]
-    option= d2
-    d3
-    d1
-    d4
-        /sample-buildout/base.cfg
-    +=  /sample-buildout/extension1.cfg
-    -=  /sample-buildout/extension1.cfg
+    option=
+       d2
+       d3
+       d1
+       d4
+    <BLANKLINE>
+       FROM extension1.cfg
+       REMOVE VALUE = d5
+       FROM extension1.cfg
+       ADD VALUE =
+          d1
+          d4
+       FROM base.cfg
+       SET VALUE =
+          d2
+          d3
+          d5
+    <BLANKLINE>
     recipe=
-        /sample-buildout/base.cfg
+    <BLANKLINE>
+       FROM base.cfg
+       SET VALUE =
+    <BLANKLINE>
     <BLANKLINE>
     [part5]
     option= h1 h2
-        /sample-buildout/extension1.cfg
+    <BLANKLINE>
+       FROM extension1.cfg
+       SET VALUE = h1 h2
+    <BLANKLINE>
+    <BLANKLINE>
     [versions]
-    zc.buildout= >=1.99
-        DEFAULT_VALUE
-    zc.recipe.egg= >=1.99
-        DEFAULT_VALUE
+    zc. = >=1.99
+    <BLANKLINE>
+       FROM DEFAULT_VALUE
+       SET VALUE = >=2.6.0.dev0
+    <BLANKLINE>
+    zc. = >=1.99
+    <BLANKLINE>
+       FROM DEFAULT_VALUE
+       SET VALUE = >=2.0.0a3
     <BLANKLINE>
 
 Cleanup::
