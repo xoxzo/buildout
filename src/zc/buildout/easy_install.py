@@ -272,14 +272,14 @@ class Installer:
 
     def _make_env(self):
         full_path = self._get_dest_dist_paths() + self._path
-        env = pkg_resources.Environment(full_path)
+        env = pkg_resources.Environment(self._get_dist_paths())
         # this needs to be called whenever self._env is modified (or we could
         # make an Environment subclass):
         self._eggify_env_dest_dists(env, self._dest)
         return env
 
     def _env_rescan_dest(self):
-        self._env.scan(self._get_dest_dist_paths())
+        self._env.scan(self._get_dist_paths())
         self._eggify_env_dest_dists(self._env, self._dest)
 
     def _get_dest_dist_paths(self):
@@ -290,6 +290,16 @@ class Installer:
         dists = [os.path.dirname(dist_info) for dist_info in
                  glob.glob(os.path.join(dest, '*', '*.dist-info'))]
         return list(set(eggs + dists))
+
+    def _get_dist_paths(self):
+        paths = self._path
+        if self._dest is not None:
+            paths += [self._dest]
+        eggs = [egg for egg_path in paths
+                for egg in glob.glob(os.path.join(egg_path, '*.egg'))]
+        dists = [os.path.dirname(dist_info) for dist_path in paths
+                 for dist_info in glob.glob(os.path.join(dist_path, '*', '*.dist-info'))]
+        return self._path + list(set(eggs + dists))
 
     @staticmethod
     def _eggify_env_dest_dists(env, dest):
